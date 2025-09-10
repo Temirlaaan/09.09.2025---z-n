@@ -32,14 +32,18 @@ except Exception as e:
 # Fetch hosts from DC-Karaganda (groupid: 1037)
 try:
     hosts = zabbix.host.get(
-        groupids=['1035'],  # Filter by DC-Karaganda group
+        groupids=['1037'],  # Filter by DC-Karaganda group
         output=['hostid', 'host', 'name', 'status'],  # Basic host fields
-        selectInventory=['vendor', 'model', 'os', 'serialno_a', 'hardware'],  # Inventory details
+        selectInventory=[
+            'vendor', 'model', 'os', 'os_short', 'serialno_a', 'hardware', 
+            'alias', 'location_lat'
+        ],  # Extended inventory details
         selectInterfaces=['ip', 'type'],  # Interface details (e.g., IP addresses)
         selectGroups=['groupid', 'name'],  # Confirm group membership
         selectParentTemplates=['templateid', 'name']  # Templates for VMware detection
     )
     logger.info(f"Found {len(hosts)} hosts in DC-Karaganda (ID: 1037):")
+    
     for host in hosts:
         logger.info(f"Host ID: {host['hostid']}")
         logger.info(f"  - Hostname: {host.get('host', 'N/A')}")
@@ -50,9 +54,32 @@ try:
         inventory = host.get('inventory', {})
         if isinstance(inventory, dict):
             logger.info(f"  - Vendor: {inventory.get('vendor', 'N/A')}")
-            logger.info(f"  - Model: {inventory.get('model', inventory.get('hardware', 'N/A'))}")
+            logger.info(f"  - Model: {inventory.get('model', 'N/A')}")
             logger.info(f"  - OS: {inventory.get('os', 'N/A')}")
+            logger.info(f"  - Version: {inventory.get('os_short', 'N/A')}")
             logger.info(f"  - Serial: {inventory.get('serialno_a', 'N/A')}")
+            logger.info(f"  - CPU Model: {inventory.get('hardware', 'N/A')}")
+            logger.info(f"  - Cluster Name: {inventory.get('alias', 'N/A')}")
+            logger.info(f"  - Location Latitude: {inventory.get('location_lat', 'N/A')}")
+
+        # Fetch total memory from items
+        try:
+            items = zabbix.item.get(
+                hostids=[host['hostid']],
+                search={'key_': 'vm.memory.size[total]'},  # Replace with correct key from debug
+                output=['lastvalue']
+            )
+            total_memory = items[0].get('lastvalue', 'N/A') if items else 'N/A'
+            if total_memory != 'N/A':
+                try:
+                    total_memory_value = float(total_memory) / (1024 ** 4)  # Convert bytes to TB
+                    total_memory = f"{total_memory_value:.2f} TB"
+                except (ValueError, TypeError):
+                    pass  # Keep as is if not convertible
+            logger.info(f"  - Total Memory: {total_memory}")
+        except Exception as e:
+            logger.error(f"Failed to fetch total memory for host {host['hostid']}: {e}")
+            logger.info(f"  - Total Memory: N/A")
 
         # Interfaces (e.g., IPs)
         interfaces = host.get('interfaces', [])
